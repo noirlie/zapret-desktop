@@ -1,0 +1,2 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup><ItemGroup><Compile Include="../../src/ZapretDesktop/ReleaseUpdater.cs" Link="ReleaseUpdater.cs"/><Compile Include="../../src/ZapretDesktop/StrategyImporter.cs" Link="StrategyImporter.cs"/><Compile Include="../../src/ZapretDesktop/UpdateHttp.cs" Link="UpdateHttp.cs"/></ItemGroup></Project>
+

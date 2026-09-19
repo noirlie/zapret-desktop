@@ -1,0 +1,8 @@
+**/bin/
+**/obj/
+artifacts/
+installer/payload/
+.vs/
+*.user
+*.suo
+*.log
