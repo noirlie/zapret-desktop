@@ -26,10 +26,13 @@ public sealed class AutoSelector(IEngine engine,IProbe probe) {
     token.ThrowIfCancellationRequested();
     return new(chosen,new(false,false,"Не проверен","Не проверен"),false,false);
    }
+   ProbeResult baseline=new(false,false,"Не проверен","Не проверен");
+   if(!strategies.Any(s=>s.Name==cached)){
    report("Проверяем доступность без запуска движка…");
-   var baseline=await probe.CheckAsync(token);
+   baseline=await probe.CheckAsync(token);
    report("Без движка: YouTube — "+baseline.YouTubeDetail+"; Discord — "+baseline.DiscordDetail);
    if(automatic && baseline.HasDnsFailure) throw new ProbeFailureException("Автоподбор остановлен: ошибка системного DNS. Подробности — в карточках сервисов. Это не означает, что стратегии не работают. Для проверки в браузере включите ручной режим.",baseline);
+   }
    var candidates=automatic?strategies.OrderBy(s=>s.Name==cached?0:1).ToArray():strategies.Take(1).ToArray();
    ProbeResult last=baseline;
    for(int i=0;i<candidates.Length;i++) {
@@ -60,4 +63,3 @@ public sealed class AutoSelector(IEngine engine,IProbe probe) {
   } catch {await engine.StopAsync();throw;}
  }
 }
-

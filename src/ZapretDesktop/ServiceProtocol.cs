@@ -9,8 +9,9 @@ public static class ServicePaths {
  public static string Root=>Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"ZapretDesktopService");
  public static string Components=>Path.Combine(Root,"components");
 }
-public record ServiceRequest(string Command,bool Automatic=true,string? Strategy=null,string? Preferred=null);
-public record ServiceSnapshot(bool Running,bool Busy,string Message,string? Strategy=null,ProbeResult? Probe=null,bool Verified=false,string? Error=null,string? Version=null,bool RecoveryPending=false);
+public record DomainDocument(string Included="",string Excluded="",string Revision="",bool HasBackup=false);
+public record ServiceRequest(string Command,bool Automatic=true,string? Strategy=null,string? Preferred=null,bool? BootEnabled=null,DomainDocument? Domains=null);
+public record ServiceSnapshot(bool Running,bool Busy,string Message,string? Strategy=null,ProbeResult? Probe=null,bool Verified=false,string? Error=null,string? Version=null,bool RecoveryPending=false,bool? BootEnabled=null,DomainDocument? Domains=null,int Features=0);
 public static class ServiceWire {
  public static async Task<T> Read<T>(Stream stream,CancellationToken token) {
   using var bytes=new MemoryStream();var single=new byte[1];
@@ -36,6 +37,3 @@ public sealed class ServiceClient(string pipeName=ServicePaths.Pipe) {
  }
  public async Task StopAsync(){var state=await Send(new("stop"),timeoutSeconds:15);if(state.Error is not null)throw new IOException(state.Error);if(state.Running||state.Busy||state.RecoveryPending)throw new IOException("Служба не подтвердила отключение.");}
 }
-
-
-

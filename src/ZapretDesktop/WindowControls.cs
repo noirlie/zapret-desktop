@@ -3,11 +3,16 @@ namespace ZapretDesktop;
 public partial class MainWindow {
  [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
  static extern int DwmSetWindowAttribute(IntPtr window,int attribute,ref int value,int size);
+ [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+ static extern int DwmGetWindowAttribute(IntPtr window,int attribute,out int value,int size);
  void ApplyWindowCorners(){
   if(!OperatingSystem.IsWindowsVersionAtLeast(10,0,22000))return;
   var handle=new System.Windows.Interop.WindowInteropHelper(this).Handle;
   int preference=2;
-  DwmSetWindowAttribute(handle,33,ref preference,sizeof(int));
+  var setResult=DwmSetWindowAttribute(handle,33,ref preference,sizeof(int));
+  var getResult=DwmGetWindowAttribute(handle,33,out var applied,sizeof(int));
+  if(setResult!=0||getResult!=0||applied!=preference)
+   WindowRendering.Log($"Window corner preference not applied: set={setResult:X8}, get={getResult:X8}, value={applied}");
  }
  void OpenAuthor(object sender,System.Windows.Navigation.RequestNavigateEventArgs e){
   e.Handled=true;
@@ -21,4 +26,3 @@ public partial class MainWindow {
  }
  void CloseWindow(object sender,RoutedEventArgs e)=>Close();
 }
-

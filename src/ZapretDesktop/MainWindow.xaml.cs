@@ -20,8 +20,11 @@ public partial class MainWindow : Window {
  bool closing,closingRequested,ready,connected,probing;
  string network="";
  public MainWindow() {
+  WindowRendering.Log("Creating window");
   InitializeComponent();
+  WindowRendering.Attach(this);
   SourceInitialized+=(_,_)=>ApplyWindowCorners();
+  StateChanged+=(_,_)=>{if(WindowState==WindowState.Normal)Dispatcher.BeginInvoke(DispatcherPriority.Loaded,new Action(ApplyWindowCorners));};
   preferences=store.Load();
   engine=new ServiceClient();
   Folder.Text=string.IsNullOrWhiteSpace(preferences.Folder)?ServicePaths.Components:preferences.Folder;
@@ -30,8 +33,8 @@ public partial class MainWindow : Window {
   ready=true;UpdateMode();
   InitializeTray();
   LoadStartupOptions();
-  AddLog("Версия 0.1.0. Автоподбор проверяет доступность сервисов.");
-  monitor.Tick+=Monitor;monitor.Start();Loaded+=async (_,_)=>await StartApplication();
+  AddLog("Версия 0.1.2. Автоподбор проверяет доступность сервисов.");
+  monitor.Tick+=Monitor;monitor.Start();ContentRendered+=async (_,_)=>await StartApplication();
   Closing+=async (_,e)=>{
    if(closing)return;
    if(!exitRequested){e.Cancel=true;HideToTray();return;}
@@ -59,12 +62,12 @@ public partial class MainWindow : Window {
    preferences.Folder=Path.GetFullPath(Folder.Text);Save();AddLog("Доступно стратегий: "+result.Count);UpdateMode();
   }catch(Exception ex){Progress.Text="Не удалось загрузить компоненты. Откройте настройки.";AddLog(ex.Message);}
  }
- void StrategyChanged(object sender,SelectionChangedEventArgs e){if(!ready)return;preferences.SelectedStrategy=(Strategies.SelectedItem as Strategy)?.Name??"general";Save();UpdateMode();}
- void ModeChanged(object sender,RoutedEventArgs e){if(!ready)return;preferences.Automatic=AutoMode.IsChecked==true;Save();UpdateMode();}
+ async void StrategyChanged(object sender,SelectionChangedEventArgs e){if(!ready)return;preferences.SelectedStrategy=(Strategies.SelectedItem as Strategy)?.Name??"general";Save();UpdateMode();await SyncBootConfiguration();}
+ async void ModeChanged(object sender,RoutedEventArgs e){if(!ready)return;preferences.Automatic=AutoMode.IsChecked==true;Save();UpdateMode();await SyncBootConfiguration();}
  void BrowseFolder(object sender,RoutedEventArgs e){var dialog=new Microsoft.Win32.OpenFolderDialog{Title="Папка zapret с bin, lists и general.bat"};if(dialog.ShowDialog()==true){Folder.Text=dialog.FolderName;LoadStrategies(sender,e);}}
  void Elevate(object sender,RoutedEventArgs e){if(operation is not null||connected)return;try{Save();Process.Start(new ProcessStartInfo(Environment.ProcessPath!){UseShellExecute=true,Verb="runas"});Close();}catch(Exception ex){AddLog("Повышение прав: "+ex.Message);}}
  async void ToggleEngine(object sender,RoutedEventArgs e){
-  if(installerBusy)return;
+  if(installerBusy||domainsBusy)return;
   if(operation is not null){operation.Cancel();Caption.Text="Отменяем подбор…";return;}
   if(connected||(engine.State.Busy||engine.State.RecoveryPending)){await Disconnect();return;}
   if(!serviceAvailable){Progress.Text="Установите или подключите службу в настройках.";return;}
@@ -81,7 +84,7 @@ public partial class MainWindow : Window {
    if(cached is null)preferences.ManualCandidates.TryGetValue(network,out cached);
    var state=await engine.Send(new("start",AutoMode.IsChecked==true,(Strategies.SelectedItem as Strategy)?.Name,cached),request.Token);
    while(state.Busy){
-    Progress.Text=state.Message;
+    ApplyServiceState(state);
     await Task.Delay(400,request.Token);
     state=await engine.Send(new("status"),request.Token);
    }
@@ -110,9 +113,5 @@ public partial class MainWindow : Window {
   try{YouTube.Text=Discord.Text="Проверяется…";var r=await probe.CheckAsync(lifetime.Token);if(!closingRequested){ShowProbe(r);AddLog("YouTube: "+r.YouTubeDetail+"; Discord: "+r.DiscordDetail);}}
   catch(OperationCanceledException){}catch(Exception ex){AddLog(ex.Message);}finally{probing=false;ProbeButton.IsEnabled=true;}
  }
- void ExportLog(object sender,RoutedEventArgs e){var dialog=new Microsoft.Win32.SaveFileDialog{FileName="zapret-diagnostics.txt",Filter="Текстовый отчёт|*.txt"};if(dialog.ShowDialog()!=true)return;try{var text=Log.Text.Replace(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),"[USER]",StringComparison.OrdinalIgnoreCase);File.WriteAllText(dialog.FileName,"zapret 0.1.0 — диагностика подключения\n"+text);}catch(Exception ex){AddLog("Экспорт: "+ex.Message);}}
+ void ExportLog(object sender,RoutedEventArgs e){var dialog=new Microsoft.Win32.SaveFileDialog{FileName="zapret-diagnostics.txt",Filter="Текстовый отчёт|*.txt"};if(dialog.ShowDialog()!=true)return;try{var text=Log.Text.Replace(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),"[USER]",StringComparison.OrdinalIgnoreCase);File.WriteAllText(dialog.FileName,"zapret 0.1.2 — диагностика подключения\n"+text);}catch(Exception ex){AddLog("Экспорт: "+ex.Message);}}
 }
-
-
-
-

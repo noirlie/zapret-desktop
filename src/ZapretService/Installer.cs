@@ -6,11 +6,12 @@ static partial class Installer {
  static string[] PackageFiles(string root) => File.Exists(Path.Combine(root,"ZapretService.dll"))
   ? ["ZapretService.exe","ZapretService.dll","ZapretService.deps.json","ZapretService.runtimeconfig.json"]
   : ["ZapretService.exe"];
- public static async Task Setup(string source,string userName){
+ public static async Task Setup(string source,string userName,string? applicationDirectory=null){
   using var key=Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\"+ServicePaths.Name);
-  if(key is not null){await Upgrade();return;}
-  var sid=new SecurityIdentifier(userName);
-  await Install(source,sid.Value);
+  var app=applicationDirectory is null?null:InstallationCleanup.ValidateAppDirectory(applicationDirectory);
+  if(key is not null)await Upgrade();
+  else{var sid=new SecurityIdentifier(userName);await Install(source,sid.Value);}
+  if(app is not null)File.WriteAllText(Path.Combine(ServicePaths.Root,"app-path.txt"),app);
  }
  static readonly string Sc=Path.Combine(Environment.SystemDirectory,"sc.exe");
  static async Task<int> Run(params string[] args){using var p=new Process{StartInfo=new(Sc){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true}};foreach(var a in args)p.StartInfo.ArgumentList.Add(a);p.Start();var output=p.StandardOutput.ReadToEndAsync();var error=p.StandardError.ReadToEndAsync();await p.WaitForExitAsync();await Task.WhenAll(output,error);return p.ExitCode;}
@@ -19,6 +20,7 @@ static partial class Installer {
   if(!EngineController.IsAdmin)throw new UnauthorizedAccessException("Требуются права администратора");
   var sid=new SecurityIdentifier(sidText);if(!sid.IsAccountSid())throw new InvalidDataException("Некорректный SID пользователя");
   if(await Run("query",ServicePaths.Name)==0)throw new IOException("Служба уже установлена. Сначала удалите её через приложение.");
+  await StopOwnedDriver(); // An interrupted uninstall can leave the kernel driver loaded.
   source=Path.GetFullPath(source);NoLinks(source);NoLinks(AppContext.BaseDirectory);
   if(!File.Exists(Path.Combine(source,"general.bat")))throw new IOException("Выберите исходную папку zapret");
   Directory.CreateDirectory(ServicePaths.Root);NoLinks(ServicePaths.Root);
@@ -46,6 +48,12 @@ static partial class Installer {
   }
   foreach(var file in Directory.GetFiles(source,"general*.bat")){if((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0)throw new IOException("Файловая ссылка");File.Copy(file,Path.Combine(ServicePaths.Components,Path.GetFileName(file)));}
   if(previousComponents is not null&&Directory.Exists(previousComponents))ComponentTransaction.PreserveLists(previousComponents,ServicePaths.Components);
+  if(previousComponents is not null){
+   foreach(var suffix in new[]{".desktop.json",".domains-backup.json"}){
+    var file=previousComponents+suffix;
+    if(File.Exists(file)&&(File.GetAttributes(file)&FileAttributes.ReparsePoint)==0)File.Copy(file,ServicePaths.Components+suffix,true);
+   }
+  }
   ComponentTransaction.EnsureUserLists(ServicePaths.Components);
   ComponentTransaction.Validate(ServicePaths.Components);
   if(File.Exists(Path.Combine(source,"release.json")))File.Copy(Path.Combine(source,"release.json"),Path.Combine(ServicePaths.Components,"release.json"),true);
@@ -99,7 +107,7 @@ static partial class Installer {
    await WaitStopped();
    foreach(var name in files){await ReplaceFile(Path.Combine(AppContext.BaseDirectory,name),Path.Combine(ServicePaths.Root,name));replaced=true;}
    if(await Run("start",ServicePaths.Name)!=0)throw new IOException("Новая служба не запустилась");
-   for(int i=0;i<5;i++){try{var status=await new ServiceClient().Send(new("status"));if(status.Version=="0.1.0")return;}catch(Exception ex)when(ex is IOException or OperationCanceledException){}await Task.Delay(500);}
+   for(int i=0;i<5;i++){try{var status=await new ServiceClient().Send(new("status"));if(status.Version=="0.1.2")return;}catch(Exception ex)when(ex is IOException or OperationCanceledException){}await Task.Delay(500);}
    throw new IOException("Новая служба не ответила на проверку состояния");
   }catch(Exception failure){
    if(!replaced){await Run("start",ServicePaths.Name);throw new IOException("Файлы службы не изменены. Не удалось дождаться освобождения файлов: "+failure.Message,failure);}
@@ -116,20 +124,63 @@ static partial class Installer {
   if(!string.Equals(key?.GetValue("ImagePath") as string,expected,StringComparison.OrdinalIgnoreCase))throw new IOException("Путь службы отличается от установленного приложением. Удаление отменено.");
   await Run("stop",ServicePaths.Name);
   await WaitStopped();
+  await StopOwnedDriver();
   if(await Run("delete",ServicePaths.Name)!=0)throw new IOException("Не удалось удалить регистрацию службы");
+  RemoveOwnerAutorun();
+ }
+ static void RemoveOwnerAutorun(){
   // Remove only this installation's autorun entry, in its owning user's hive.
   var ownerFile=Path.Combine(ServicePaths.Root,"owner.sid");
   if(File.Exists(ownerFile)){
    var owner=new SecurityIdentifier(File.ReadAllText(ownerFile).Trim());
-   using var run=Microsoft.Win32.Registry.Users.OpenSubKey(owner.Value+@"\Software\Microsoft\Windows\CurrentVersion\Run",true);
-   var expectedApp=StartupRegistration.Command(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"Zapret","ZapretDesktop.exe"));
-   if(string.Equals(run?.GetValue("ZapretDesktop") as string,expectedApp,StringComparison.OrdinalIgnoreCase))run!.DeleteValue("ZapretDesktop",false);
+   const string runPath=@"Software\Microsoft\Windows\CurrentVersion\Run";
+   using var run=Microsoft.Win32.Registry.Users.OpenSubKey(owner.Value+@"\"+runPath,true)
+    ?? (WindowsIdentity.GetCurrent().User?.Value==owner.Value?Microsoft.Win32.Registry.CurrentUser.OpenSubKey(runPath,true):null);
+   if(run is null)throw new IOException("Не удалось открыть автозапуск владельца установки. Войдите под этим пользователем и повторите удаление.");
+   var appPathFile=Path.Combine(ServicePaths.Root,"app-path.txt");
+   var appDirectory=File.Exists(appPathFile)?InstallationCleanup.ValidateAppDirectory(File.ReadAllText(appPathFile).Trim()):Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"Zapret");
+   var expectedApp=StartupRegistration.Command(Path.Combine(appDirectory,"ZapretDesktop.exe"));
+   if(string.Equals(run.GetValue("ZapretDesktop") as string,expectedApp,StringComparison.OrdinalIgnoreCase))run.DeleteValue("ZapretDesktop",false);
   }
-  // Keep protected components as a backup; never recursively delete user files.
+ }
+ public static async Task RemoveInstallation(string applicationDirectory,bool purge){
+  if(!EngineController.IsAdmin)throw new UnauthorizedAccessException();
+  var app=InstallationCleanup.ValidateAppDirectory(applicationDirectory);
+  var helper=Path.GetFullPath(Path.Combine(app,"service")).TrimEnd(Path.DirectorySeparatorChar);
+  if(!helper.Equals(Path.GetFullPath(AppContext.BaseDirectory).TrimEnd(Path.DirectorySeparatorChar),StringComparison.OrdinalIgnoreCase))throw new IOException("Помощник не принадлежит удаляемому приложению.");
+  var appMarker=Path.Combine(ServicePaths.Root,"app-path.txt");
+  if(File.Exists(appMarker)&&!InstallationCleanup.ValidateAppDirectory(File.ReadAllText(appMarker).Trim()).Equals(app,StringComparison.OrdinalIgnoreCase))throw new IOException("Служба принадлежит другой установке.");
+  if(!Directory.Exists(ServicePaths.Root))return;
+  var ownerFile=Path.Combine(ServicePaths.Root,"owner.sid");
+  if(!File.Exists(ownerFile))throw new IOException("Не найден владелец данных службы. Очистка отменена.");
+  var owner=File.ReadAllText(ownerFile).Trim();string? profile=null;
+  if(purge){profile=InstallationCleanup.OwnerProfile(owner);InstallationCleanup.Plan(ServicePaths.Root,profile,owner);}
+  using(var key=Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\"+ServicePaths.Name)){
+   if(key is not null)await Uninstall();
+  }
+  if(purge)await StopOwnedDriver();
+  RemoveOwnerAutorun();
+  if(purge)InstallationCleanup.Purge(ServicePaths.Root,profile!,owner);
+ }
+ static async Task StopOwnedDriver(){
+  var driver=Path.GetFullPath(Path.Combine(ServicePaths.Components,"bin","WinDivert64.sys"));
+  using var key=Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\WinDivert");
+  var image=(key?.GetValue("ImagePath") as string ?? "").Trim('"');
+  // WinDivert is a shared service name. Never stop one pointing outside our component tree.
+  if(image.StartsWith(@"\??\",StringComparison.Ordinal))image=image[4..];
+  if(!string.Equals(image,driver,StringComparison.OrdinalIgnoreCase))return;
+  var processes=Process.GetProcessesByName("winws");
+  try{if(processes.Length!=0)throw new IOException("Другой winws ещё работает. Закройте его перед удалением драйвера.");}
+  finally{foreach(var process in processes)process.Dispose();}
+  // A stopped driver may continue holding its image briefly. Do not report success until released.
+  await Run("stop","WinDivert");
+  if(!File.Exists(driver)){await Run("delete","WinDivert");return;}
+  for(var attempt=0;attempt<60;attempt++){
+   try{using(var handle=new FileStream(driver,FileMode.Open,FileAccess.ReadWrite,FileShare.None)){} await Run("delete","WinDivert");return;}
+   catch(IOException ex)when((ex.HResult&0xffff) is 32 or 33){}
+   catch(UnauthorizedAccessException){}
+   await Task.Delay(500);
+  }
+  throw new IOException("Драйвер WinDivert всё ещё удерживает файл. Закройте программы, использующие его, или перезагрузите Windows и повторите удаление.");
  }
 }
-
-
-
-
-

@@ -12,8 +12,9 @@ public partial class MainWindow
         var page = (string)((RadioButton)sender).Tag;
         if (page == currentPage) return;
         currentPage = page;
+        if(page=="Domains"&&!domainsLoaded)_=LoadDomains();
         var version = ++transitionVersion;
-        var panels = new FrameworkElement[] { Home, Diagnostics, Updates, Settings };
+        var panels = new FrameworkElement[] { Home, Diagnostics, Updates, Settings, Domains };
         var incoming = panels.Single(p => p.Name == page);
         foreach (var panel in panels)
         {

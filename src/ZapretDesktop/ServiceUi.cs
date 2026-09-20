@@ -10,14 +10,14 @@ public partial class MainWindow {
   try{
    var state=await engine.Send(new("status"),lifetime.Token);serviceAvailable=true;
    Folder.Text=ServicePaths.Components;connected=false;LoadStrategies(this,new RoutedEventArgs());
-   ServiceStatus.Text="Служба "+(state.Version??"предыдущей версии")+" подключена."+(state.Version=="0.1.0"?" Автовосстановление доступно.":" Для установки обновлений компонентов обновите службу.");
+   ServiceStatus.Text="Служба "+(state.Version??"предыдущей версии")+" подключена."+(state.Version=="0.1.2"?" Автовосстановление доступно.":" Для установки обновлений компонентов обновите службу.");
    ApplyServiceState(state);
   }catch(OperationCanceledException){if(!closingRequested)ServiceStatus.Text="Служба не отвечает. Установите её или повторите подключение.";}
   catch(Exception ex){ServiceStatus.Text="Служба не подключена. Нужна однократная установка.";AddLog(ex.Message);}
  }
  void ApplyServiceState(ServiceSnapshot state){
   connected=state.Running;
-  if(state.Busy){Heading.Text="Подбираем подключение";Caption.Text="Нажмите, чтобы отменить";Progress.Text=state.Message;Power.Opacity=.7;System.Windows.Automation.AutomationProperties.SetName(Power,"Отменить подбор");return;}
+  if(state.Busy){Heading.Text=state.Running?"Подключение запущено":"Подбираем подключение";Caption.Text="Нажмите, чтобы отменить";Progress.Text=state.Running?"Проверяем доступность сервисов…":state.Message;Power.Background=state.Running?Brushes.Black:Brushes.White;PowerIcon.Stroke=state.Running?Brushes.White:Brushes.Black;Power.Opacity=state.Running?1:.7;System.Windows.Automation.AutomationProperties.SetName(Power,"Отменить подбор");return;}
   Power.Opacity=1;
   if(state.Running){Heading.Text=state.Verified?"Конфигурация подобрана":"Движок работает в фоне";Caption.Text="Нажмите, чтобы отключить";Progress.Text="Режим: "+state.Strategy+" · "+state.Message;Power.Background=Brushes.Black;PowerIcon.Stroke=Brushes.White;System.Windows.Automation.AutomationProperties.SetName(Power,"Отключить");if(state.Probe is not null)ShowProbe(state.Probe);}
   else{ShowStopped();Progress.Text=state.Error??state.Message;if(state.Probe is not null)ShowProbe(state.Probe);}
@@ -27,7 +27,7 @@ public partial class MainWindow {
  async void RepairService(object sender,RoutedEventArgs e){
   if(installerBusy||operation is not null)return;
   await AttachService();
-  if(serviceAvailable&&engine.State.Version=="0.1.0"){ServiceStatus.Text="Всё готово к подключению.";return;}
+  if(serviceAvailable&&engine.State.Version=="0.1.2"){ServiceStatus.Text="Всё готово к подключению.";return;}
   using var registered=Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\"+ServicePaths.Name);
   if(registered is not null)UpgradeService(sender,e);
   else{ServiceStatus.Text="Запустите установщик zapret повторно. Он восстановит службу и компоненты, сохранив настройки.";}
@@ -68,10 +68,3 @@ public partial class MainWindow {
   finally{installerBusy=false;Power.IsEnabled=true;InstallServiceButton.IsEnabled=true;UpgradeServiceButton.IsEnabled=true;}
  }
 }
-
-
-
-
-
-
-

@@ -11,7 +11,7 @@ class Program {
   engine=new();probe=new(No,No,No,Yes,Yes);
   result=await new AutoSelector(engine,probe).SelectAsync([A,B,C],null,true,_=>{},default);
   Check(result.Strategy==B&&engine.Starts.SequenceEqual(new[]{"A","B"})&&engine.Running,"fallback and two-pass confirmation");
-  engine=new();probe=new(No,Yes,Yes);
+  engine=new();probe=new(Yes,Yes);
   result=await new AutoSelector(engine,probe).SelectAsync([A,B,C],"C",true,_=>{},default);
   Check(result.Strategy==C&&engine.Starts.Single()=="C","cached strategy first");
   engine=new();probe=new(No,Yes,No,Yes,Yes);
@@ -37,6 +37,13 @@ class Program {
   using var cancelled=new CancellationTokenSource();cancelled.Cancel();engine=new();probe=new(No);
   try{await new AutoSelector(engine,probe).SelectAsync([A],null,true,_=>{},cancelled.Token);throw new Exception("cancel expected");}catch(OperationCanceledException){}
   Check(engine.Starts.Count==0,"pre-cancel prevents startup");
+  using(var fastCancel=new CancellationTokenSource()){
+   engine=new();probe=new(){BlockAfter=0};
+   var pending=new AutoSelector(engine,probe).SelectAsync([A,B],"B",true,_=>{},fastCancel.Token);
+   Check(engine.Running&&engine.Starts.SequenceEqual(new[]{"B"})&&!pending.IsCompleted,"cached engine starts before first network response");
+   fastCancel.Cancel();try{await pending;}catch(OperationCanceledException){}
+   Check(!engine.Running,"cancel during cached background verification stops engine");
+  }
   var directory=Path.Combine(AppContext.BaseDirectory,"test-settings");Directory.CreateDirectory(directory);
   var store=new SettingsStore(directory);var settings=new UserSettings{Folder="test path",Automatic=false,SelectedStrategy="B"};settings.Working["hash"]="B";store.Save(settings);
   var restored=store.Load();Check(restored.Working["hash"]=="B"&&!restored.Automatic&&restored.Folder=="test path","settings atomic round trip");
@@ -64,7 +71,7 @@ class Program {
   engine=new();probe=new(No,No,Yes,Yes);
   result=await new AutoSelector(engine,probe).SelectAsync([A,B],null,true,_=>{},default);
   Check(result.Strategy==A&&engine.Starts.Count==1,"transient failure retries same strategy");
-  engine=new();probe=new(No,No,No,Yes,Yes);
+  engine=new();probe=new(No,No,Yes,Yes);
   result=await new AutoSelector(engine,probe).SelectAsync([A,B],"A",true,_=>{},default);
   Check(result.Strategy==B,"cached strategy is revalidated and replaced");
   Check(ProbeDns.Parse("{\"Status\":0,\"Answer\":[{\"type\":1,\"data\":\"1.1.1.1\"},{\"type\":1,\"data\":\"127.0.0.1\"},{\"type\":1,\"data\":\"192.168.1.1\"}]}").Length==1,"DoH rejects loopback and LAN addresses");

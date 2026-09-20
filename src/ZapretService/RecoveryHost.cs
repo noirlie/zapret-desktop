@@ -15,7 +15,7 @@ sealed partial class ServiceHost {
   catch(NetworkInformationException){return "unknown";}
  }
  async Task RecoveryLoop(CancellationToken token){
-  var lastTick=DateTimeOffset.UtcNow;var nextHealth=lastTick+TimeSpan.FromSeconds(45);int observedEpoch=networkEpoch;
+  var lastTick=DateTimeOffset.UtcNow;var nextHealth=lastTick+TimeSpan.FromSeconds(10);int observedEpoch=networkEpoch;
   NetworkAddressChangedEventHandler changed=(_,_)=>Interlocked.Increment(ref networkEpoch);
   NetworkChange.NetworkAddressChanged+=changed;
   try {while(!token.IsCancellationRequested){
@@ -23,12 +23,12 @@ sealed partial class ServiceHost {
    var now=DateTimeOffset.UtcNow;int epoch=Volatile.Read(ref networkEpoch);bool resumed=now-lastTick>TimeSpan.FromSeconds(45)||epoch!=observedEpoch;observedEpoch=epoch;lastTick=now;
    long version;bool check;bool active;bool busy;
    await commands.WaitAsync(token);
-   try{version=generation;active=desired;busy=Snapshot.Busy;check=active&&!busy&&engine.Running&&lastRequest?.Automatic==true&&now>=nextHealth;}
+   try{version=generation;active=desired;busy=Snapshot.Busy;check=active&&!busy&&engine.Running&&lastRequest?.Automatic==true&&NetworkInterface.GetIsNetworkAvailable()&&now>=nextHealth;}
    finally{commands.Release();}
    if(!active||busy)continue;
-   bool? healthy=null;
+   bool? healthy=null;ProbeResult? healthResult=null;
    if(check){
-    try{var result=await probe.CheckAsync(token);healthy=result.Passed;}
+    try{healthResult=await probe.CheckAsync(token);healthy=healthResult.Passed;}
     catch(OperationCanceledException)when(token.IsCancellationRequested){throw;}
     catch{healthy=false;}
     nextHealth=DateTimeOffset.UtcNow+TimeSpan.FromSeconds(45);
@@ -36,6 +36,7 @@ sealed partial class ServiceHost {
    await commands.WaitAsync(token);
    try{
     if(!desired||version!=generation||Snapshot.Busy)continue;
+    if(healthResult is not null){Set(Snapshot with{Probe=healthResult,Verified=healthResult.Passed,Message=healthResult.Passed?"Подключение проверено":"Проверка не подтвердила доступность. Повторим в фоне."});if(healthResult.Passed)RememberStrategy(Snapshot.Strategy);}
     var decision=recovery.Observe(DateTimeOffset.UtcNow,NetworkInterface.GetIsNetworkAvailable(),NetworkKey(),engine.Running,false,healthy,resumed);
     if(decision.Kind is "wait" or "limited"){Set(Snapshot with{Message=decision.Message,RecoveryPending=true});continue;}
     if(decision.Kind!="recover"||lastRequest is null)continue;
@@ -54,5 +55,3 @@ sealed partial class ServiceHost {
   finally{NetworkChange.NetworkAddressChanged-=changed;}
  }
 }
-
-

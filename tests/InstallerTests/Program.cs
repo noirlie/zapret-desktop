@@ -30,6 +30,45 @@ try{
  if(File.ReadAllText(userList)!="example.com")throw new Exception("Existing user list overwritten");
  Console.WriteLine("PASS: repeated initialization preserves user lists");
 
+
+ var cleanupRoot=Path.Combine(root,"cleanup");Directory.CreateDirectory(cleanupRoot);
+ var owned=Path.Combine(cleanupRoot,"ZapretDesktopService");var profile=Path.Combine(cleanupRoot,"profile");
+ var userData=Path.Combine(profile,"AppData","Local","ZapretDesktop.Alpha");
+ var owner=System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value;
+ Directory.CreateDirectory(owned);Directory.CreateDirectory(userData);
+ File.WriteAllText(Path.Combine(owned,"owner.sid"),owner);File.WriteAllText(Path.Combine(owned,"components.desktop.json"),"configuration");
+ File.WriteAllText(Path.Combine(userData,"preferences.json"),"settings");
+ var archive=owned+".backup-"+new string('a',32);Directory.CreateDirectory(archive);File.WriteAllText(Path.Combine(archive,"owner.sid"),owner);File.WriteAllText(Path.Combine(archive,"private-list.txt"),"example.com");
+ var unrelated=Path.Combine(cleanupRoot,"unrelated");Directory.CreateDirectory(unrelated);File.WriteAllText(Path.Combine(unrelated,"keep.txt"),"keep");
+ var notOwned=owned+".backup-not-owned";Directory.CreateDirectory(notOwned);File.WriteAllText(Path.Combine(notOwned,"keep.txt"),"keep");
+ var planned=InstallationCleanup.Plan(owned,profile,owner);
+ if(planned.Length!=3||!File.Exists(Path.Combine(userData,"preferences.json")))throw new Exception("Planning must not erase data");
+ Console.WriteLine("PASS: cleanup planning preserves settings until explicit purge");
+ var lockedDriver=Path.Combine(owned,"components","bin","WinDivert64.sys");Directory.CreateDirectory(Path.GetDirectoryName(lockedDriver)!);File.WriteAllText(lockedDriver,"driver");
+ using(var lockDriver=new FileStream(lockedDriver,FileMode.Open,FileAccess.Read,FileShare.Read)){
+  try{InstallationCleanup.Purge(owned,profile,owner);throw new Exception("Locked driver silently skipped");}catch(IOException){}
+  if(!File.Exists(Path.Combine(userData,"preferences.json")))throw new Exception("Settings removed before driver lock was resolved");
+  if(!File.Exists(Path.Combine(owned,"owner.sid")))throw new Exception("Owner identity lost after driver lock");
+ }
+ Console.WriteLine("PASS: locked driver preserves settings and owner identity");
+ using(var lockedSettings=new FileStream(Path.Combine(userData,"preferences.json"),FileMode.Open,FileAccess.Read,FileShare.Read)){
+  try{InstallationCleanup.Purge(owned,profile,owner);throw new Exception("Locked settings silently skipped");}catch(IOException){}
+  if(!File.Exists(Path.Combine(owned,"owner.sid")))throw new Exception("Identity lost before settings cleanup succeeded");
+ }
+ Console.WriteLine("PASS: locked settings report failure and retain identity for retry");
+ InstallationCleanup.Purge(owned,profile,owner);
+ if(Directory.Exists(owned)||Directory.Exists(userData)||Directory.Exists(archive))throw new Exception("Full cleanup left data");
+ if(!File.Exists(Path.Combine(unrelated,"keep.txt"))||!Directory.Exists(notOwned))throw new Exception("Cleanup affected unrelated files");
+ Console.WriteLine("PASS: full cleanup removes settings, configuration and owned backups only");
+ if(InstallationCleanup.ValidateAppDirectory(@"D:\Apps\zapret")!=@"D:\Apps\zapret")throw new Exception("Custom drive not accepted");
+ foreach(var invalid in new[]{@"C:\",@"\\server\share\zapret","relative"}){
+  try{InstallationCleanup.ValidateAppDirectory(invalid);throw new Exception("Unsafe install directory accepted");}catch(IOException){}
+ }
+ Console.WriteLine("PASS: custom disk accepted; drive root, UNC and relative destinations rejected");
+ Directory.CreateDirectory(owned);File.WriteAllText(Path.Combine(owned,"owner.sid"),"S-1-5-21-1-2-3-1001");
+ try{InstallationCleanup.Purge(owned,profile,owner);throw new Exception("Foreign owner accepted");}catch(IOException){}
+ if(!Directory.Exists(owned))throw new Exception("Foreign data removed");
+ Console.WriteLine("PASS: foreign owner prevents cleanup");
  var pipe="Zapret.Setup.Test."+Guid.NewGuid().ToString("N");
  var identityFile=Path.Combine(root,"owner.sid");
  var capture=SetupIdentity.Capture(pipe,identityFile);

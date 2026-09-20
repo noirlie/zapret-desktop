@@ -17,7 +17,7 @@ public sealed class ReleaseUpdater(HttpClient http) {
  const long MaximumExpanded=128*1024*1024;
  public async Task<ComponentRelease> Check(CancellationToken token) {
   using var request=new HttpRequestMessage(HttpMethod.Get,Endpoint);
-  request.Headers.UserAgent.ParseAdd("ZapretDesktop/0.1.0");
+  request.Headers.UserAgent.ParseAdd("ZapretDesktop/0.1.2");
   request.Headers.Accept.ParseAdd("application/vnd.github+json");
   using var response=await http.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,token);
   response.EnsureSuccessStatusCode();
@@ -45,7 +45,7 @@ public sealed class ReleaseUpdater(HttpClient http) {
   var stage=Path.Combine(cache,"package-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(stage);
   var partial=Path.Combine(stage,"download.part");
   try {
-   using var request=new HttpRequestMessage(HttpMethod.Get,release.Url);request.Headers.UserAgent.ParseAdd("ZapretDesktop/0.1.0");
+   using var request=new HttpRequestMessage(HttpMethod.Get,release.Url);request.Headers.UserAgent.ParseAdd("ZapretDesktop/0.1.2");
    using var response=await http.SendAsync(request,HttpCompletionOption.ResponseHeadersRead,token);response.EnsureSuccessStatusCode();
    if(response.Content.Headers.ContentLength is long size&&size!=release.Size)throw new InvalidDataException("Размер пакета отличается от метаданных GitHub");
    await using(var input=await response.Content.ReadAsStreamAsync(token))

@@ -30,6 +30,8 @@ static partial class Installer {
   var client=new ServiceClient();ServiceSnapshot? state=null;
   for(int i=0;i<8;i++){try{state=await client.Send(new("status"),timeout.Token);break;}catch(Exception ex)when(ex is IOException or OperationCanceledException){await Task.Delay(500,timeout.Token);}}
   if(state is null)throw new IOException("Служба не ответила после запуска");
+  // Boot autoconnect may already own a process; cancel it before validation.
+  if(state.Running||state.Busy||state.RecoveryPending)await client.StopAsync();
   // Exercise actual winws startup, not just the service pipe. Restore the previous mode when connected.
   var strategy=before.Strategy??"general";
   state=await client.Send(new("start",before.Running&&before.Verified,strategy,strategy),timeout.Token);
@@ -40,7 +42,7 @@ static partial class Installer {
  public static async Task UpdateComponents(string tag){
   VerifyInstalledService();
   var installed=await new ServiceClient().Send(new("status"));
-  if(installed.Version!="0.1.0")throw new IOException("Сначала обновите службу до 0.1.0 в настройках.");
+  if(installed.Version!="0.1.2")throw new IOException("Сначала обновите службу до 0.1.2 в настройках.");
   if(installed.Busy||installed.RecoveryPending)throw new IOException("Сначала отмените подбор или восстановление.");
   using var timeout=new CancellationTokenSource(TimeSpan.FromMinutes(5));
   using var http=UpdateHttp.Create();

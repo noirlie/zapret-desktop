@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-<PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><AssemblyName>ZapretDesktop</AssemblyName><ApplicationManifest>app.manifest</ApplicationManifest><Version>0.1.0</Version><ApplicationIcon>Assets\zapret.ico</ApplicationIcon></PropertyGroup>
+<PropertyGroup><OutputType>WinExe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><AssemblyName>ZapretDesktop</AssemblyName><ApplicationManifest>app.manifest</ApplicationManifest><Version>0.1.2</Version><ApplicationIcon>Assets\zapret.ico</ApplicationIcon></PropertyGroup>
 <ItemGroup><Resource Include="Assets\zapret.ico"/></ItemGroup><ItemGroup><Using Remove="System.Windows.Forms"/><Using Remove="System.Drawing"/></ItemGroup></Project>
 
 

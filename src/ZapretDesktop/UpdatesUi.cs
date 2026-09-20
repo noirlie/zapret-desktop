@@ -10,7 +10,7 @@ public partial class MainWindow {
  async void UpdatePrimary(object sender,RoutedEventArgs e){
   if(installerBusy||updateOperation is not null||operation is not null)return;
   if(availableRelease is null||availableRelease.Tag==InstalledComponentVersion()){CheckUpdate(sender,e);return;}
-  if(engine.State.Version!="0.1.0"){UpdateStatus.Text="Запустите установщик zapret повторно, чтобы обновить приложение и службу вместе.";return;}
+  if(engine.State.Version!="0.1.2"){UpdateStatus.Text="Запустите установщик zapret повторно, чтобы обновить приложение и службу вместе.";return;}
   if(MessageBox.Show("Обновить компоненты? Подключение временно прервётся. Настройки и списки сохранятся.","zapret",MessageBoxButton.YesNo,MessageBoxImage.Question)!=MessageBoxResult.Yes)return;
   await ChangeComponents(["--components",availableRelease.Tag]);
   UpdateButton.Content="Проверить обновления";availableRelease=null;
@@ -56,7 +56,7 @@ public partial class MainWindow {
  }
  async void InstallComponents(object sender,RoutedEventArgs e){
   if(installerBusy||updateOperation is not null||preparedTag is null||operation is not null)return;
-  if(engine.State.Version!="0.1.0"){UpdateStatus.Text="Сначала обновите службу до 0.1.0 в настройках.";return;}
+  if(engine.State.Version!="0.1.2"){UpdateStatus.Text="Сначала обновите службу до 0.1.2 в настройках.";return;}
   if(MessageBox.Show("Установить компоненты "+preparedTag+"? Подключение временно прервётся. Установщик повторно загрузит и проверит пакет в защищённой папке; пользовательские списки сохранятся. При ошибке запуска будет выполнен откат.","zapret",MessageBoxButton.YesNo,MessageBoxImage.Question)!=MessageBoxResult.Yes)return;
   await ChangeComponents(["--components",preparedTag]);
  }

@@ -12,7 +12,7 @@ public sealed class WebProbe(Func<HttpMessageHandler>? handlerFactory=null) : IP
    ConnectCallback=async (context,ct)=>await ProbeDns.Connect((await dns.Resolve(context.DnsEndPoint.Host,ct)).Addresses,context.DnsEndPoint.Port,ct)
   };
   using var client=new HttpClient(handler){Timeout=TimeSpan.FromSeconds(12),DefaultRequestVersion=HttpVersion.Version20,DefaultVersionPolicy=HttpVersionPolicy.RequestVersionOrLower};
-  client.DefaultRequestHeaders.UserAgent.ParseAdd("ZapretDesktop/0.1.0");
+  client.DefaultRequestHeaders.UserAgent.ParseAdd("ZapretDesktop/0.1.2");
   var yt=CheckedRequest(client,"https://www.youtube.com/",false,token);
   var dc=CheckedRequest(client,"https://discord.com/api/v10/gateway",true,token);
   await Task.WhenAll(yt,dc);
